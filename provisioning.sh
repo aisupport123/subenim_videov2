@@ -1,140 +1,200 @@
 #!/bin/bash
 set -e
+source /venv/main/bin/activate
 
-echo "🚀 Provisioning ANIMATOR V2.1 (VIDEO) started..."
+WORKSPACE=${WORKSPACE:-/workspace}
+COMFYUI_DIR="${WORKSPACE}/ComfyUI"
 
-apt-get update && apt-get install -y git wget aria2 python3-pip unzip
+echo "===  subenim запускает VIDEO GENERATOR V1 ==="
 
-PIP="/venv/main/bin/pip"
-COMFY="/workspace/ComfyUI"
-MODELS="$COMFY/models"
-NODES="$COMFY/custom_nodes"
-WORKFLOWS="$COMFY/user/default/workflows"
+APT_PACKAGES=()           # если нужно — добавь sudo apt install ...
+PIP_PACKAGES=()           # глобальные pip пакеты, если сверх requirements
 
-echo "📦 Using pip: $PIP"
+NODES=(
+    "https://github.com/kijai/ComfyUI-WanVideoWrapper"
+    "https://github.com/chflame163/ComfyUI_LayerStyle"
+    "https://github.com/yolain/ComfyUI-Easy-Use"
+    "https://github.com/kijai/ComfyUI-KJNodes"
+    "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite"
+    "https://github.com/kijai/ComfyUI-segment-anything-2"
+    "https://github.com/cubiq/ComfyUI_essentials"
+    "https://github.com/fq393/ComfyUI-ZMG-Nodes"
+    "https://github.com/kijai/ComfyUI-WanAnimatePreprocess"
+    "https://github.com/rgthree/rgthree-comfy"
+    "https://github.com/jnxmx/ComfyUI_HuggingFace_Downloader"
+    "https://github.com/teskor-hub/NEW-UTILS.git"
+    "https://github.com/aisupport123/subenim_nodes.git"
+    "https://github.com/rgthree/rgthree-comfy"
+    "https://github.com/Starnodes2024/ComfyUI_StarNodes"
+    "https://github.com/DesertPixelAi/ComfyUI-Desert-Pixel-Nodes"
+    "https://github.com/Fannovel16/comfyui_controlnet_aux"
+    "https://github.com/GACLove/ComfyUI-VFI"
+)
 
-# ====================== CUSTOM NODES ======================
-echo "📥 Cloning custom nodes..."
-cd "$NODES"
+# ЗАГРУЗКА ФАЙЛОВ НУЖНЫХ
+CLIP_MODELS=(
+    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/klip_vision.safetensors"
+)
+CLIPS=(
+"https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors"
+)
 
-git clone https://github.com/kijai/ComfyUI-WanVideoWrapper.git || true
-git clone https://github.com/kijai/ComfyUI-WanAnimatePreprocess.git || true
-git clone https://github.com/kijai/ComfyUI-KJNodes.git || true
-git clone https://github.com/rgthree/rgthree-comfy.git || true
-git clone https://github.com/ltdrdata/ComfyUI-Impact-Pack.git || true
-git clone https://github.com/teskor-hub/comfyui-teskors-utils.git || true
-git clone https://github.com/PozzettiAndrea/ComfyUI-SAM3.git || true
-git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git || true
-git clone https://github.com/ClownsharkBatwing/ComfyUI-ClownsharK.git || true
-git clone https://github.com/cubiq/ComfyUI_essentials.git || true
-git clone https://github.com/LeonQ8/ComfyUI-Dynamic-Lora-Scheduler.git || true
-git clone https://github.com/PGCRT/CRT-Nodes.git || true
+TEXT_ENCODERS=(
+"https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors"
+)
 
-echo "📦 Installing node requirements..."
-$PIP install --upgrade --force-reinstall opencv-python opencv-python-headless
+UNET_MODELS=(
+    "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors"
+)
 
-for dir in */; do
-  if [ -f "$dir/requirements.txt" ]; then
-    echo "→ Installing requirements for $dir"
-    $PIP install -r "$dir/requirements.txt" || true
-  fi
-done
+VAE_MODELS=(
+    "https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/vae.safetensors"
+    "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors"
+)
 
-# ====================== WORKFLOWS ======================
-echo "📂 Copying workflows..."
-mkdir -p "$WORKFLOWS"
+DETECTION_MODELS=(
+"https://huggingface.co/Wan-AI/Wan2.2-Animate-14B/resolve/main/process_checkpoint/det/yolov10m.onnx"
+"https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_data.bin"
+"https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_model.onnx"
+"https://huggingface.co/JunkyByte/easy_ViTPose/resolve/main/onnx/wholebody/vitpose-l-wholebody.onnx"
+)
 
-cp /workspace/provisioning/animator_v2_1_0.json \
-  "$WORKFLOWS/animator_v2_1_0.json" \
-  2>/dev/null || echo "⚠️ animator_v2_1_0.json not found"
+LORAS=(
+"https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/WanFun.reworked.safetensors"
+"https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/light.safetensors"
+"https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/light.safetensors"
+"https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/WanPusa.safetensors"
+"https://huggingface.co/wdsfdsdf/OFMHUB/resolve/main/wan.reworked.safetensors"
+"https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Pusa/Wan21_PusaV1_LoRA_14B_rank512_bf16.safetensors"
+"https://huggingface.co/alibaba-pai/Wan2.2-Fun-Reward-LoRAs/resolve/main/Wan2.2-Fun-A14B-InP-low-noise-HPS2.1.safetensors"
+"https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors"
+"https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Lightx2v/lightx2v_I2V_14B_480p_cfg_step_distill_rank256_bf16.safetensors"
+)
 
-cp /workspace/provisioning/animator_v2_1_0_mask_mode.json \
-  "$WORKFLOWS/animator_v2_1_0_mask_mode.json" \
-  2>/dev/null || echo "⚠️ animator_v2_1_0_mask_mode.json not found"
+CLIP_VISION=(
+"https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors"
+)
 
-# ====================== MODEL DIRS ======================
-echo "📁 Creating model directories..."
-mkdir -p \
-  "$MODELS/diffusion_models" \
-  "$MODELS/vae" \
-  "$MODELS/clip_vision" \
-  "$MODELS/clip" \
-  "$MODELS/loras" \
-  "$MODELS/detection" \
-  "$MODELS/controlnet"
+DEFFUSION=(
+"https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/Wan22Animate/Wan2_2-Animate-14B_fp8_scaled_e4m3fn_KJ_v2.safetensors"
+)
 
-cd "$MODELS"
+### ─────────────────────────────────────────────
+### DO NOT EDIT BELOW UNLESS YOU KNOW WHAT YOU ARE DOING
+### ─────────────────────────────────────────────
 
-# ====================== CORE MODELS ======================
-echo "📥 1. MAIN MODEL = Wan 2.2 Animate 14B (IMPORTANT FIX)"
-aria2c -x 16 -s 16 --continue=true --dir="$MODELS/diffusion_models" \
-  --out=WanModel.safetensors \
-  "https://huggingface.co/Kijai/WanVideo_comfy_fp8_scaled/resolve/main/Wan22Animate/Wan2_2-Animate-14B_fp8_e4m3fn_scaled_KJ.safetensors"
+function provisioning_start() {
+    echo ""
+    echo "##############################################"
+    echo "# FUCK THIS WORLD                            #"
+    echo "# subenim_v1 2025-2026                       #"
+    echo "# BY MAPICH                                  #"
+    echo "##############################################"
+    echo ""
 
-echo "📥 2. VAE"
-aria2c -x 16 -s 16 --continue=true --dir="$MODELS/vae" \
-  --out=mo_vae.safetensors \
-  "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan2_1_VAE_bf16.safetensors"
+    provisioning_get_apt_packages
+    provisioning_clone_comfyui
+    provisioning_install_base_reqs
+    provisioning_get_nodes
+    provisioning_get_pip_packages
 
-echo "📥 3. CLIP Vision"
-aria2c -x 16 -s 16 --continue=true --dir="$MODELS/clip_vision" \
-  --out=klip_vision.safetensors \
-  "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors"
+    provisioning_get_files "${COMFYUI_DIR}/models/clip"               "${CLIP_MODELS[@]}"
+    provisioning_get_files "${COMFYUI_DIR}/models/clip_vision"        "${CLIP_VISION[@]}"
+    provisioning_get_files "${COMFYUI_DIR}/models/text_encoders"      "${TEXT_ENCODERS[@]}"
+    provisioning_get_files "${COMFYUI_DIR}/models/vae"                "${VAE_MODELS[@]}"
+    provisioning_get_files "${COMFYUI_DIR}/models/diffusion_models"   "${DIFFUSION_MODELS[@]}"
 
-echo "📥 4. Text Encoder"
-aria2c -x 16 -s 16 --continue=true --dir="$MODELS/clip" \
-  --out=text_enc.safetensors \
-  "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors"
+    provisioning_get_files "${COMFYUI_DIR}/models/detection"   "${DETECTION_MODELS[@]}"
+    provisioning_get_files "${COMFYUI_DIR}/models/loras"   "${LORAS[@]}"
+    provisioning_get_files "${COMFYUI_DIR}/models/diffusion_models"     "${DEFFUSION[@]}"
 
-# ====================== LORAS ======================
-echo "📥 5. LoRA light"
-aria2c -x 16 -s 16 --continue=true --dir="$MODELS/loras" \
-  --out=light.safetensors \
-  "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/LoRAs/Wan22_relight/WanAnimate_relight_lora_fp16.safetensors" || true
+    echo ""
+    echo "subenim настроил → Starting ComfyUI..."
+    echo ""
+}
 
-echo "📥 6. LoRA wan_reworked"
-aria2c -x 16 -s 16 --continue=true --dir="$MODELS/loras" \
-  --out=wan_reworked.safetensors \
-  "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan21_AccVid_I2V_480P_14B_lora_rank32_fp16.safetensors" || true
+function provisioning_clone_comfyui() {
+    if [[ ! -d "${COMFYUI_DIR}" ]]; then
+        echo "subenim клонирует ComfyUI..."
+        git clone https://github.com/comfyanonymous/ComfyUI.git "${COMFYUI_DIR}"
+    fi
+    cd "${COMFYUI_DIR}"
+}
 
-echo "📥 7. LoRA WanPusa"
-aria2c -x 16 -s 16 --continue=true --dir="$MODELS/loras" \
-  --out=WanPusa.safetensors \
-  "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/loras/WanPusa.safetensors" || true
+function provisioning_install_base_reqs() {
+    if [[ -f requirements.txt ]]; then
+        echo "subenim установливает base requirements..."
+        pip install --no-cache-dir -r requirements.txt
+    fi
+}
 
-echo "📥 8. LoRA WanFun.reworked"
-aria2c -x 16 -s 16 --continue=true --dir="$MODELS/loras" \
-  --out=WanFun.reworked.safetensors \
-  "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/loras/WanFun.reworked.safetensors" || true
+function provisioning_get_apt_packages() {
+    if [[ ${#APT_PACKAGES[@]} -gt 0 ]]; then
+        echo "subenim устанавливает apt packages..."
+        sudo apt update && sudo apt install -y "${APT_PACKAGES[@]}"
+    fi
+}
 
-echo "🔗 Creating symlink: wan.reworked.safetensors"
-ln -sf "$MODELS/loras/wan_reworked.safetensors" \
-       "$MODELS/loras/wan.reworked.safetensors" || true
+function provisioning_get_pip_packages() {
+    if [[ ${#PIP_PACKAGES[@]} -gt 0 ]]; then
+        echo "subenim устанавливает extra pip packages..."
+        pip install --no-cache-dir "${PIP_PACKAGES[@]}"
+    fi
+}
 
-# ====================== DETECTION ======================
-echo "📥 9. Detection: yolov10m.onnx"
-aria2c -x 16 -s 16 --continue=true --dir="$MODELS/detection" \
-  --out=yolov10m.onnx \
-  "https://huggingface.co/Wan-AI/Wan2.2-Animate-14B/resolve/main/process_checkpoint/det/yolov10m.onnx"
+function provisioning_get_nodes() {
+    mkdir -p "${COMFYUI_DIR}/custom_nodes"
+    cd "${COMFYUI_DIR}/custom_nodes"
 
-echo "📥 10. Detection: vitpose_h_wholebody_model.onnx"
-aria2c -x 16 -s 16 --continue=true --dir="$MODELS/detection" \
-  --out=vitpose_h_wholebody_model.onnx \
-  "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_model.onnx"
+    for repo in "${NODES[@]}"; do
+        dir="${repo##*/}"
+        path="./${dir}"
 
-echo "📥 11. Detection: vitpose_h_wholebody_data.bin"
-aria2c -x 16 -s 16 --continue=true --dir="$MODELS/detection" \
-  --out=vitpose_h_wholebody_data.bin \
-  "https://huggingface.co/Kijai/vitpose_comfy/resolve/main/onnx/vitpose_h_wholebody_data.bin"
+        if [[ -d "$path" ]]; then
+            echo "Updating node: $dir"
+            (cd "$path" && git pull --ff-only 2>/dev/null || { git fetch && git reset --hard origin/main; })
+        else
+            echo "Cloning node: $dir"
+            git clone "$repo" "$path" --recursive || echo " [!] Clone failed: $repo"
+        fi
 
-# ====================== CONTROLNET ======================
-echo "📥 12. ControlNet"
-aria2c -x 16 -s 16 --continue=true --dir="$MODELS/controlnet" \
-  --out=Wan21_Uni3C_controlnet_fp16.safetensors \
-  "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan21_Uni3C_controlnet_fp16.safetensors" || true
+        requirements="${path}/requirements.txt"
+        if [[ -f "$requirements" ]]; then
+            echo "Installing deps for $dir..."
+            pip install --no-cache-dir -r "$requirements" || echo " [!] pip requirements failed for $dir"
+        fi
+    done
+}
 
-echo ""
-echo "✅ ANIMATOR V2.1 setup finished"
-echo "Main fix: Wan 2.2 Animate model is now used as WanModel.safetensors"
-echo "If optional LoRAs fail, keep those slots on NONE."
-echo "🔥 Ready."
+function provisioning_get_files() {
+    if [[ $# -lt 2 ]]; then return; fi
+    local dir="$1"
+    shift
+    local files=("$@")
+
+    mkdir -p "$dir"
+    echo "Скачивание ${#files[@]} file(s) → $dir..."
+
+    for url in "${files[@]}"; do
+        echo "→ $url"
+        local auth_header=""
+        if [[ -n "$HF_TOKEN" && "$url" =~ huggingface\.co ]]; then
+            auth_header="--header=Authorization: Bearer $HF_TOKEN"
+        elif [[ -n "$CIVITAI_TOKEN" && "$url" =~ civitai\.com ]]; then
+            auth_header="--header=Authorization: Bearer $CIVITAI_TOKEN"
+        fi
+
+        wget $auth_header -nc --content-disposition --show-progress -e dotbytes=4M -P "$dir" "$url" || echo " [!] Download failed: $url"
+        echo ""
+    done
+}
+
+# Запуск provisioning если не отключен
+if [[ ! -f /.noprovisioning ]]; then
+    provisioning_start
+fi
+
+# Запуск ComfyUI
+echo "=== subenim запускает ComfyUI ==="
+cd "${COMFYUI_DIR}"
+python main.py --listen 0.0.0.0 --port 8188
